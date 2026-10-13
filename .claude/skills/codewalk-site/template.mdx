@@ -1,0 +1,61 @@
+---
+role: コマンドラインの引数を読み、知らないフラグなら何もせずに止める。
+files:
+  - src/cli/parse-args.ts
+status: done
+basedOn: "0000000"
+covers:
+  "知らないフラグで止める": "知らないフラグで止める"
+  "既定値を1か所にまとめる": "既定値を1か所にまとめる"
+questions:
+  - 知らないフラグを渡すと、何が起きますか。
+  - 引数と設定ファイルの値が食い違うと、どちらが使われますか。
+  - 既定値を定数にまとめたのは、どんな食い違いを防ぐためですか。
+---
+
+import Walkthrough from "@kit/components/Walkthrough.astro";
+import Step from "@kit/components/Step.astro";
+import StepFlow from "@kit/diagrams/StepFlow.astro";
+import { constant } from "@kit/lib/target";
+
+export const F = "src/cli/parse-args.ts";
+
+{/*
+  サイトの章のひな形。workspace/chapters/NN-slug.mdx に置く（名前は workspace/notes/NN-slug.md と同じ）。
+  例は架空のリポジトリのもので、このままではビルドできない（アンカーが実在しないため）。
+  frontmatter の決まりは SKILL.md の工程4。basedOn は git -C workspace log -1 --format=%h -- notes/NN-slug.md を、
+  必ず引用符で囲んで書く（数字だけの ID が数値として読まれるため）。
+  自分で作った図は相対パスで import する（例：import Timeline from "../diagrams/Timeline.astro";）。
+  import と export の行のかたまりの中にはコメントを置かない（MDX が読めなくなる）。
+*/}
+
+コマンドを実行すると、最初にこのファイルが引数を読みます。知らないフラグが1つでもあれば、何もせずに止めます。
+
+<StepFlow
+  label="引数の読み取り"
+  lanes={[
+    { id: "shell", label: "シェル", kind: "a" },
+    { id: "cli", label: "parse-args.ts", kind: "b" },
+  ]}
+  steps={[
+    { from: "shell", to: "cli", label: "tasklog --lmit 5", note: "綴りを誤ったフラグを渡します。" },
+    { from: "cli", to: "cli", label: "フラグを照合する", note: "<code>KNOWN_FLAGS</code> に無いフラグを見つけます。", mark: "key" },
+    { from: "cli", to: "shell", label: "終了コード 2", note: "使い方を表示して、何もせずに止めます。", mark: "reject" },
+  ]}
+/>
+
+<Walkthrough file={F}>
+
+## 知らないフラグで止める
+
+<Step file={F} title="知らないフラグで止める" from="if (!KNOWN_FLAGS.has(name)) {" to="    }">
+  知らないフラグがあると、使い方を表示して終了コード 2 で止めます。引数は設定ファイルの値より優先します（ADR-0003）。2 を選んだのは、使い方の誤りと実行の失敗を見分けるためと考えられます（コードからの推測です）。
+</Step>
+
+## 既定値を1か所にまとめる
+
+<Step file={F} title="既定値は定数で持つ" from="export const DEFAULT_LIMIT" to="export const DEFAULT_LIMIT">
+  `--limit` の既定値は {constant(F, "DEFAULT_LIMIT")} です。数字はコードから読んでいるので、コードが変わればここも変わります。定数にまとめたのは、ヘルプに出す既定値と実際の値が食い違っていたためです。
+</Step>
+
+</Walkthrough>

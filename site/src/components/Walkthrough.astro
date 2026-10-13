@@ -1,0 +1,153 @@
+---
+/**
+ * 左にファイル全文、右に解説。右の段落がスクロールで画面の中ほどに来ると、
+ * その段落が指す行が左で光り、そこまで送られる。
+ *
+ * DOM の順は解説が先（読み上げとキーボードの順を保つ）。左右は CSS の order で入れ替える。
+ *
+ * 段落（Step）は自分の行範囲をビルド時に解決して data-start / data-end に持つ。
+ * 図の中から一時的に別の行を光らせたいときは `wt:highlight` イベントを投げる。
+ */
+import CodePane from "./CodePane.astro";
+
+interface Props {
+  file: string;
+  lang?: string;
+}
+const { file, lang } = Astro.props;
+
+// 中の段落（Step）が、左に表示するファイルと同じファイルを指しているかをビルドで確かめる。
+// 違うと、別のファイルの行番号で光ってしまい、見た目では気付きにくい
+const steps = await Astro.slots.render("default");
+const others = [...steps.matchAll(/data-step data-file="([^"]*)"/g)]
+  .map((m) => m[1].replaceAll("&amp;", "&").replaceAll("&quot;", '"').replaceAll("&lt;", "<").replaceAll("&gt;", ">"))
+  .filter((f) => f !== file);
+if (others.length) {
+  throw new Error(`[Walkthrough] ${file} の中の Step が、別のファイルを指しています: ${[...new Set(others)].join(", ")}`);
+}
+---
+
+<div class="wt" data-walkthrough>
+  <div class="cols">
+    <div class="steps">
+      <Fragment set:html={steps} />
+    </div>
+    <div class="pane">
+      <CodePane file={file} lang={lang} />
+    </div>
+  </div>
+</div>
+
+<script>
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  for (const root of document.querySelectorAll<HTMLElement>("[data-walkthrough]")) {
+    const pane = root.querySelector<HTMLElement>("[data-code-pane]")!;
+    const scroller = root.querySelector<HTMLElement>("[data-scroller]")!;
+    const lineEls = [...pane.querySelectorAll<HTMLElement>(".line")];
+    const steps = [...root.querySelectorAll<HTMLElement>("[data-step]")];
+
+    function highlight(start: number, end: number, instant = false) {
+      pane.classList.add("has-hl");
+      for (const el of lineEls) {
+        const n = Number(el.dataset.line);
+        el.classList.toggle("hl", n >= start && n <= end);
+      }
+      const first = lineEls[start - 1];
+      const last = lineEls[end - 1];
+      if (!first || !last) return;
+      const mid = (first.offsetTop + last.offsetTop + last.offsetHeight) / 2;
+      scroller.scrollTo({
+        top: Math.max(0, mid - scroller.clientHeight * 0.42),
+        behavior: instant || reduced() ? "auto" : "smooth",
+      });
+    }
+
+    function activate(step: HTMLElement, instant = false) {
+      for (const s of steps) s.toggleAttribute("data-active", s === step);
+      highlight(Number(step.dataset.start), Number(step.dataset.end), instant);
+    }
+
+    // 画面の上から 40〜60% の帯に入った段落を「いま読んでいる段落」とする
+    const io = new IntersectionObserver(
+      (entries) => {
+        const hit = entries.filter((e) => e.isIntersecting).at(-1);
+        if (hit) activate(hit.target as HTMLElement);
+      },
+      { rootMargin: "-40% 0px -55% 0px" },
+    );
+    steps.forEach((s) => io.observe(s));
+
+    root.addEventListener("wt:highlight", (e) => {
+      const { start, end } = (e as CustomEvent<{ start: number; end: number }>).detail;
+      highlight(start, end);
+    });
+
+    if (steps[0]) activate(steps[0], true);
+  }
+</script>
+
+<style>
+  /* 左右に並べるか縦に積むかは、画面ではなく置かれた幅で決める（左の目次を開け閉めすると変わる） */
+  .wt {
+    container-type: inline-size;
+  }
+  .cols {
+    display: grid;
+    /* 解説は 40em まで。目次を開いて幅が減ったら、コードの欄が細くなりすぎないよう解説の側も縮める */
+    grid-template-columns: minmax(0, 1fr) minmax(0, min(40em, 46cqi));
+    gap: clamp(24px, 4vw, 56px);
+    align-items: start;
+  }
+  .steps {
+    padding-bottom: 30vh;
+  }
+  /* 節の見出し。解説の列の中で、段落のまとまりを区切る */
+  .steps > :global(h2) {
+    margin: 12vh 0 4vh;
+    padding-top: 18px;
+    border-top: 2px solid var(--ink);
+    font-size: clamp(1.35rem, 2.6vw, 1.8rem);
+    line-height: 1.45;
+    scroll-margin-top: 72px;
+  }
+  .steps > :global(h2:first-child) {
+    margin-top: 0;
+  }
+  .steps :global(table) {
+    width: 100%;
+    margin: 0 0 1.1em;
+    border-collapse: collapse;
+    font-size: 0.86rem;
+    line-height: 1.6;
+  }
+  .steps :global(th),
+  .steps :global(td) {
+    padding: 0.45em 0.6em;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  .steps :global(th) {
+    font-size: 0.78rem;
+    color: var(--ink-3);
+    font-weight: 700;
+  }
+  .pane {
+    order: -1;
+    position: sticky;
+    top: calc(var(--header-h) + 16px);
+    height: calc(100vh - var(--header-h) - 40px);
+  }
+  @container (max-width: 920px) {
+    .cols {
+      /* 1fr だとコードの最も長い行が列の最小幅になり、狭い画面で横にはみ出す */
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .pane {
+      top: var(--header-h);
+      height: 42vh;
+      z-index: 5;
+    }
+  }
+</style>

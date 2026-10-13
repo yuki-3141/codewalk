@@ -1,0 +1,147 @@
+@import "./tokens.css";
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.9;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-a);
+  outline-offset: 2px;
+}
+
+/* 本文。1行40字前後に収める */
+.prose {
+  max-width: 40em;
+}
+.prose p {
+  margin: 0 0 1.1em;
+}
+.prose strong {
+  font-weight: 700;
+  background: linear-gradient(transparent 62%, var(--c-a-soft) 62%);
+}
+.prose code,
+code.inline {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 0.1em 0.38em;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/*
+ * Shiki の二色テーマ。<Code defaultColor={false}> が出す変数を、表示中のテーマで選ぶ。
+ * 背景はテーマの色を使わず、サイトの面の色にそろえる（行の強調を上から塗れるように）。
+ */
+.astro-code {
+  background-color: var(--surface) !important;
+}
+.astro-code span {
+  color: var(--shiki-light);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .astro-code span {
+    color: var(--shiki-dark);
+  }
+}
+:root[data-theme="dark"] .astro-code span {
+  color: var(--shiki-dark);
+}
+
+/* 小さな部品 */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.1em 0.65em;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.7;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.chip[data-kind="a"] { color: var(--c-a); border-color: currentColor; background: var(--c-a-soft); }
+.chip[data-kind="b"] { color: var(--c-b); border-color: currentColor; background: var(--c-b-soft); }
+.chip[data-kind="c"] { color: var(--c-c); border-color: currentColor; background: var(--c-c-soft); }
+.chip[data-kind="d"] { color: var(--c-d); border-color: currentColor; background: var(--c-d-soft); }
+.chip[data-kind="reject"] { color: var(--c-reject); border-color: currentColor; background: var(--c-reject-soft); }
+.chip[data-kind="pending"] { color: var(--c-pending); border-style: dashed; background: var(--c-pending-soft); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.45em 1em;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.15s var(--ease);
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--ink-3);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btn[data-variant="primary"] {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.btn[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
+.eyebrow {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

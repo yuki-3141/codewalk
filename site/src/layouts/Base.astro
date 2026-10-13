@@ -1,0 +1,146 @@
+---
+import "../styles/global.css";
+import { COMMIT_SHORT, config } from "../lib/target";
+
+const brand = config?.title ?? "codewalk";
+const repoName = config?.repo.split("/").filter(Boolean).at(-1) ?? "";
+
+interface Props {
+  title: string;
+}
+const { title } = Astro.props;
+// 章のページは左に目次を出す（slot="sidebar"）。トップページは地図そのものが目次なので出さない
+const hasSidebar = Astro.slots.has("sidebar");
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <script is:inline>
+      // 描画前にテーマと目次の開け閉めを当てる（ちらつき防止）。保存できない環境でも既定の姿で表示できる。
+      // 目次は狭い画面では畳んで始め、広い画面では前に畳んだかどうかを覚えている（Sidebar.astro）
+      {
+        const root = document.documentElement;
+        if (matchMedia("(max-width: 959px)").matches) root.dataset.sidebar = "closed";
+        try {
+          const saved = localStorage.getItem("theme");
+          if (saved === "light" || saved === "dark") root.dataset.theme = saved;
+          if (localStorage.getItem("sidebar") === "closed") root.dataset.sidebar = "closed";
+        } catch {}
+      }
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <span class="mark" aria-hidden="true"></span>
+        <span class="brand-name">{brand}</span>
+      </a>
+      {config && <span class="chip commit" title="解説しているコードの基準コミット">{repoName} @ {COMMIT_SHORT}</span>}
+      <button class="btn theme" type="button" id="theme-toggle" aria-label="ライト／ダークを切り替える">
+        <span aria-hidden="true">◐</span><span class="theme-label">テーマ</span>
+      </button>
+    </header>
+    {
+      hasSidebar ? (
+        <div class="shell">
+          <slot name="sidebar" />
+          <div class="shell-main">
+            <slot />
+          </div>
+        </div>
+      ) : (
+        <slot />
+      )
+    }
+    <script>
+      const button = document.getElementById("theme-toggle")!;
+      const root = document.documentElement;
+      const isDark = () =>
+        root.dataset.theme === "dark" ||
+        (root.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+      button.addEventListener("click", () => {
+        const next = isDark() ? "light" : "dark";
+        root.dataset.theme = next;
+        try {
+          localStorage.setItem("theme", next);
+        } catch {}
+      });
+    </script>
+  </body>
+</html>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: var(--header-h);
+    padding: 0 clamp(16px, 4vw, 40px);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    margin-right: auto;
+    min-width: 0;
+  }
+  /* ヘッダーは1段に収める（高さを --header-h に固定している）。長い題は省く */
+  .brand-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .mark {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    background:
+      linear-gradient(135deg, var(--c-a) 0 33%, var(--c-b) 33% 66%, var(--c-c) 66%);
+  }
+  .theme {
+    flex: none;
+    padding: 0.35em 0.8em;
+  }
+  @media (max-width: 520px) {
+    .theme-label {
+      display: none;
+    }
+    /* 基準コミットは、コードの欄の見出しとトップページにも出ている */
+    .commit {
+      display: none;
+    }
+  }
+
+  /* 目次の列。畳むと（狭い画面では常に）細い帯だけ残す。狭い画面で開いた目次は本文に重なる */
+  .shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  }
+  :global(:root[data-sidebar="closed"]) .shell {
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  }
+  /* 狭い画面で開いた目次は並びの外に出る（重ねる）ので、本文の列を決めておく */
+  .shell-main {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  @media (max-width: 959px) {
+    .shell {
+      grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    }
+  }
+</style>

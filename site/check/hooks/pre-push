@@ -1,0 +1,66 @@
+#!/usr/bin/env node
+/**
+ * codewalk：workspace/ の push の守り（pre-push フック）。
+ *
+ * workspace/ には対象のコードの断片とメモが入る。公開リポジトリへ push すると、そのまま公開される。
+ * push の直前に送り先を確かめ、公開かもしれない送り先なら止める。
+ *
+ *   手元のパス（/…、file://…）          … 通す
+ *   GitHub の非公開リポジトリ           … 通す（ログイン無しで問い合わせて「見つからない」が返る）
+ *   GitHub の公開リポジトリ             … 止める
+ *   GitHub 以外・判定できない（通信できない等） … 止める
+ *
+ * 確かめたうえで送るとき：git push --no-verify
+ * いつも許す送り先：git -C workspace config --add codewalk.trustedRemote <URL>
+ *
+ * このファイルはキット（site/check/hooks/pre-push）にあり、npm --prefix site run hooks で
+ * workspace/ に写される。直すときはキット側を直して、写し直す。
+ */
+// 置き場所によって ESM とも CommonJS とも読まれるので、import も require も使わない
+const { execFileSync } = process.getBuiltinModule("node:child_process");
+
+const [, , remote, url = ""] = process.argv;
+// URL に埋め込まれた認証情報（https://user:token@…）は、表示にも設定にも出さない
+const bare = (u) => u.replace(/^(https?:\/\/)[^@/]+@/i, "$1");
+const shown = url.replace(/^(https?:\/\/)[^@/]+@/i, "$1***@");
+const stop = (why) => {
+  console.error(`\n✗ codewalk: ${remote}（${shown}）への push を止めました。${why}`);
+  console.error("  workspace/ には対象のコードの断片が入ります。公開される送り先には push しないでください。");
+  console.error("  非公開だと確かめたうえで送るなら：git push --no-verify");
+  console.error(`  この送り先をいつも許すなら：git -C workspace config --add codewalk.trustedRemote ${bare(url)}\n`);
+  process.exit(1);
+};
+
+let trusted = [];
+try {
+  trusted = execFileSync("git", ["config", "--get-all", "codewalk.trustedRemote"], { encoding: "utf8" }).split("\n").filter(Boolean);
+} catch {}
+if (trusted.some((t) => bare(t) === bare(url))) process.exit(0);
+
+// 手元のパス（外付けのディスクなどへの控え）
+if (/^(?:\/|\.{1,2}\/|file:\/\/|[A-Za-z]:[\\/])/.test(url)) process.exit(0);
+
+const gh =
+  url.match(/^https?:\/\/(?:[^@/]+@)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i) ??
+  url.match(/^(?:ssh:\/\/)?git@github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+if (!gh) stop("GitHub 以外の送り先は、公開か非公開かを判定できないためです。");
+
+(async () => {
+  let res;
+  try {
+    res = await fetch(`https://api.github.com/repos/${gh[1]}/${gh[2]}`, {
+      headers: { "user-agent": "codewalk-pre-push", accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    stop(`公開か非公開かを GitHub に問い合わせられなかったためです（${e.message}）。`);
+  }
+  // ログイン無しの問い合わせでは、非公開のリポジトリは 404（見つからない）になる
+  if (res.status === 404) process.exit(0);
+  if (res.status === 200) {
+    const repo = await res.json();
+    if (repo.private === true) process.exit(0);
+    stop(`${gh[1]}/${gh[2]} は公開リポジトリです。`);
+  }
+  stop(`GitHub の返事（${res.status}）から、公開か非公開かを判定できなかったためです。`);
+})();

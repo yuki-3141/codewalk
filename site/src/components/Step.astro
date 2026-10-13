@@ -1,0 +1,56 @@
+---
+/**
+ * 解説の1段落。指すコードはアンカーで書き、ここで行範囲に解決する。
+ * アンカーが見つからない・2箇所で見つかるとビルドが失敗する。
+ */
+import { resolve, type Anchor } from "../lib/target";
+
+interface Props extends Anchor {
+  file: string;
+  title: string;
+}
+const { file, title, from, to, count } = Astro.props;
+const { start, end } = resolve(file, { from, to, count });
+---
+
+<section class="step" data-step data-file={file} data-start={start} data-end={end}>
+  <span class="where">{start === end ? `${start} 行目` : `${start}–${end} 行目`}</span>
+  <h3>{title}</h3>
+  <div class="prose">
+    <slot />
+  </div>
+</section>
+
+<style>
+  .step {
+    position: relative;
+    padding: 28px 0 28px 22px;
+    margin-bottom: 10vh;
+    border-left: 3px solid var(--line);
+    transition: border-color 0.35s var(--ease), opacity 0.35s var(--ease);
+    opacity: 0.55;
+  }
+  .step[data-active] {
+    border-left-color: var(--hl-edge);
+    opacity: 1;
+  }
+  .where {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--ink-3);
+  }
+  .step[data-active] .where {
+    color: var(--hl-edge);
+  }
+  h3 {
+    margin: 2px 0 12px;
+    font-size: 1.3rem;
+    line-height: 1.5;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .step {
+      opacity: 1;
+    }
+  }
+</style>

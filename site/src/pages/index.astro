@@ -1,0 +1,511 @@
+---
+/**
+ * トップページ＝地図。
+ *   1. 何を読むか（設定の題と説明、読むファイルの数と行数）と、区分の流れ
+ *   2. 全章を区分ごとに（作成済みの章だけリンク）
+ *   3. 色と動きの決まり（全部の図の凡例。色の意味は workspace/notes/plan.md から）
+ *
+ * 章の並びと区分は章立てから、ファイル数と行数は基準コミットから計算する。
+ * 設定や章立てがまだ無いとき（clone した直後）は、次にすることを出す。
+ */
+import { getCollection } from "astro:content";
+import Base from "../layouts/Base.astro";
+import { allChapters, allGroups, hasPlan, legend, planIntro } from "../lib/curriculum";
+import { COMMIT_SHORT, config, lines } from "../lib/target";
+
+const chapters = allChapters();
+const built = new Set((await getCollection("chapters")).map((e) => e.id));
+const byN = new Map(chapters.map((c) => [c.n, c]));
+
+// 章立てが読むファイル（重なりを除く）と、その行数。設定が無ければ数えない（案内の画面を出す）
+const readFiles = config ? [...new Set(chapters.flatMap((c) => c.files))] : [];
+const totalLines = readFiles.reduce((sum, f) => sum + lines(f).length, 0);
+
+const colors = [
+  ...legend().map((l) => ({ v: `--c-${l.kind}`, name: l.name, note: l.note })),
+  { v: "--c-reject", name: "弾く・失敗", note: "弾かれた入力、エラー、取り下げ" },
+  { v: "--c-pending", name: "準備中", note: "まだ作っていない章（破線）" },
+];
+
+const firstBuilt = chapters.find((c) => built.has(c.id));
+const groups = allGroups();
+---
+
+<Base title={config?.title ?? "codewalk"}>
+  <main>
+    {
+      !config || !hasPlan() ? (
+        <section class="empty">
+          <p class="eyebrow">はじめに</p>
+          <h1>{config ? "章立てがまだありません" : "読むリポジトリがまだ決まっていません"}</h1>
+          <ol>
+            {!config && (
+              <li>
+                Claude Code で <code>/codewalk &lt;読みたいリポジトリのパス&gt;</code> を実行します。
+                設定（<code>workspace/codewalk.config.json</code>）と章立て（<code>workspace/notes/plan.md</code>）ができ、章立てを1度だけ確かめられます。
+              </li>
+            )}
+            {config && !hasPlan() && (
+              <li>
+                <code>/codewalk</code> をもう一度実行して、章立て（<code>workspace/notes/plan.md</code>）を作るところから続けます。
+              </li>
+            )}
+            <li>
+              続けて、1章ずつ事実メモ（<code>workspace/notes/NN-slug.md</code>）とサイトの章が作られます。
+              途中で止めても、<code>/codewalk</code> で続きから進められます。
+            </li>
+          </ol>
+          <p>詳しくはリポジトリの README.md を見てください。</p>
+        </section>
+      ) : (
+        <>
+          <section class="hero">
+            <div class="intro">
+              <p class="eyebrow">ソースを、動かしながら読む</p>
+              <h1>{config.title}</h1>
+              {config.description && <p class="lead">{config.description}</p>}
+              <dl class="stats">
+                <div><dt>読むコード</dt><dd>{readFiles.length}<small>ファイル</small></dd></div>
+                <div><dt>行数</dt><dd>{totalLines.toLocaleString("ja-JP")}<small>行</small></dd></div>
+                <div><dt>作成済み</dt><dd>{built.size}<small>/ {chapters.length} 章</small></dd></div>
+              </dl>
+              <p class="base">基準コミット <code>{COMMIT_SHORT}</code> のコードをそのまま取り出して表示しています。</p>
+              {
+                firstBuilt && (
+                  <a class="btn start" data-variant="primary" href={`/${firstBuilt.id}/`}>
+                    読みはじめる：{firstBuilt.n} {firstBuilt.title} →
+                  </a>
+                )
+              }
+            </div>
+
+            <figure class="flow" aria-labelledby="flow-title">
+              <figcaption>
+                <p class="eyebrow">読む順</p>
+                <h2 id="flow-title">区分の流れ</h2>
+                <p>{planIntro().split("\n\n")[0]}</p>
+              </figcaption>
+              <ol>
+                {
+                  groups.map((g) => {
+                    const first = byN.get(g.chapters[0])!;
+                    const last = byN.get(g.chapters.at(-1)!)!;
+                    const done = g.chapters.some((n) => built.has(byN.get(n)!.id));
+                    const inner = (
+                      <>
+                        <span class="n">{first.n === last.n ? first.n : `${first.n}–${last.n}`}</span>
+                        <span class="t">
+                          {g.name}
+                          <small>{g.outcome}</small>
+                        </span>
+                        <span class="lane">{g.chapters.length}章</span>
+                      </>
+                    );
+                    const firstDone = g.chapters.map((n) => byN.get(n)!).find((c) => built.has(c.id));
+                    return (
+                      <li data-built={done ? "" : undefined}>
+                        {firstDone ? <a href={`/${firstDone.id}/`}>{inner}</a> : <span>{inner}</span>}
+                      </li>
+                    );
+                  })
+                }
+              </ol>
+            </figure>
+          </section>
+
+          <section class="block" aria-labelledby="map-title">
+            <p class="eyebrow">{chapters.length}章</p>
+            <h2 id="map-title">全体の地図</h2>
+            <p class="sub">ファイル名順ではなく、処理が通る道の順に並んでいます。破線の章はまだ作っていません。</p>
+            <div class="groups">
+              {
+                groups.map((g) => (
+                  <section class="group" data-has-built={g.chapters.some((n) => built.has(byN.get(n)!.id)) ? "" : undefined}>
+                    <h3>{g.name}</h3>
+                    <p class="outcome">{g.outcome}</p>
+                    <ul>
+                      {g.chapters.map((n) => {
+                        const c = byN.get(n)!;
+                        return built.has(c.id) ? (
+                          <li data-built>
+                            <a href={`/${c.id}/`}>
+                              <b>{c.n}</b>
+                              {c.title}
+                            </a>
+                          </li>
+                        ) : (
+                          <li>
+                            <b>{c.n}</b>
+                            {c.title}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                ))
+              }
+            </div>
+          </section>
+
+          <section class="block" aria-labelledby="rules-title">
+            <p class="eyebrow">凡例</p>
+            <h2 id="rules-title">色と動きの決まり</h2>
+            <div class="rules">
+              <div>
+                <h3>色には意味がある</h3>
+                <ul class="swatches">
+                  {
+                    colors.map((c) => (
+                      <li>
+                        <span
+                          class="sw"
+                          style={`--sw: var(${c.v}); --sw-soft: var(${c.v}-soft)`}
+                          data-pending={c.v === "--c-pending" ? "" : undefined}
+                        />
+                        <span>
+                          <b>{c.name}</b>
+                          <small>{c.note}</small>
+                        </span>
+                      </li>
+                    ))
+                  }
+                </ul>
+              </div>
+              <div>
+                <h3>動きは順序を見せるためだけに</h3>
+                <ul class="motion">
+                  <li>流れ続ける演出は置かない。<b>進めるのは自分の手</b>（次へ・前へ・全部見る）</li>
+                  <li>動くのは「どこからどこへ渡ったか」と「何が増え、何が消えたか」だけ</li>
+                  <li>OS の「視差効果を減らす」がオンなら、動かさずに結果だけを出す</li>
+                  <li>色だけに頼らない。破線・ラベル・形でも区別する</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+        </>
+      )
+    }
+  </main>
+</Base>
+
+<style>
+  main {
+    padding: 0 clamp(16px, 4vw, 40px) 120px;
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: clamp(32px, 6vw, 88px);
+    align-items: center;
+    padding: clamp(40px, 8vw, 104px) 0 clamp(32px, 5vw, 64px);
+  }
+  h1 {
+    margin: 8px 0 18px;
+    font-size: clamp(2.4rem, 6vw, 4.2rem);
+    line-height: 1.15;
+    font-weight: 800;
+  }
+  .lead {
+    margin: 0 0 28px;
+    max-width: 34em;
+    font-size: 1.08rem;
+    color: var(--ink-2);
+  }
+  .stats {
+    display: flex;
+    gap: clamp(20px, 4vw, 44px);
+    margin: 0 0 14px;
+  }
+  .stats div {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+  .stats dt {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: var(--ink-3);
+  }
+  .stats dd {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+  }
+  .stats small {
+    margin-left: 4px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--ink-2);
+  }
+  .base {
+    margin: 0 0 28px;
+    font-size: 0.82rem;
+    color: var(--ink-3);
+  }
+  .base code {
+    font-family: var(--font-mono);
+  }
+  .start {
+    font-size: 0.95rem;
+    padding: 0.7em 1.4em;
+    text-decoration: none;
+  }
+
+  .flow {
+    margin: 0;
+    padding: clamp(22px, 3vw, 32px);
+    border: 1px solid var(--line);
+    border-radius: calc(var(--radius) + 6px);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+  .flow figcaption h2 {
+    margin: 2px 0 6px;
+    font-size: 1.35rem;
+  }
+  .flow figcaption p:last-child {
+    margin: 0 0 20px;
+    font-size: 0.86rem;
+    color: var(--ink-2);
+  }
+  .flow ol {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 10px;
+  }
+  .flow ol::before {
+    content: "";
+    position: absolute;
+    left: 31px;
+    top: 18px;
+    bottom: 18px;
+    width: 2px;
+    background: var(--line);
+  }
+  .flow li {
+    --k: var(--ink-3);
+    --ks: var(--surface-2);
+    position: relative;
+  }
+  .flow li[data-built] {
+    --k: var(--c-a);
+    --ks: var(--c-a-soft);
+  }
+  .flow li > * {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px 6px 0;
+    border-radius: 12px;
+    text-decoration: none;
+    transition: background-color 0.2s;
+  }
+  .flow li > a:hover {
+    background: var(--surface-2);
+  }
+  .flow .n {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 34px;
+    border-radius: 10px;
+    border: 2px solid var(--k);
+    background: var(--ks);
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: 0.9rem;
+  }
+  .flow li:not([data-built]) .n {
+    border-style: dashed;
+  }
+  .flow .t {
+    font-weight: 700;
+  }
+  .flow li:not([data-built]) .t {
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+  .flow .lane {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--k);
+  }
+  .flow .n {
+    width: auto;
+    min-width: 44px;
+    padding: 0 8px;
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+  .flow .t small {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--ink-3);
+    line-height: 1.5;
+  }
+  .flow .lane {
+    color: var(--ink-3);
+    font-family: var(--font-mono);
+  }
+  .empty {
+    max-width: 44em;
+    padding: clamp(40px, 8vw, 104px) 0;
+  }
+  .empty ol {
+    padding-left: 1.4em;
+    display: grid;
+    gap: 10px;
+  }
+  .empty code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    padding: 0.1em 0.38em;
+    border-radius: 6px;
+    background: var(--surface-2);
+  }
+
+  .block {
+    padding-top: clamp(48px, 7vw, 96px);
+  }
+  .block > h2 {
+    margin: 4px 0 8px;
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+  }
+  .sub {
+    margin: 0 0 28px;
+    max-width: 40em;
+    color: var(--ink-2);
+  }
+  .groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 14px;
+  }
+  .group {
+    padding: 18px 20px;
+    border: 1px dashed var(--line);
+    border-radius: var(--radius);
+  }
+  .group[data-has-built] {
+    border-style: solid;
+    background: var(--surface);
+  }
+  .group h3 {
+    margin: 0;
+    font-size: 1rem;
+  }
+  .outcome {
+    margin: 2px 0 12px;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: var(--ink-3);
+  }
+  .group ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 4px;
+    font-size: 0.88rem;
+  }
+  .group li {
+    color: var(--ink-3);
+  }
+  .group li b {
+    display: inline-block;
+    width: 2.2em;
+    font-family: var(--font-mono);
+    font-weight: 800;
+  }
+  .group li[data-built] a {
+    color: var(--ink);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .group li[data-built] a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .group li[data-built] b {
+    color: var(--c-a);
+  }
+
+  .rules {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin-top: 20px;
+  }
+  .rules > div {
+    padding: 22px 24px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+  .rules h3 {
+    margin: 0 0 14px;
+    font-size: 1.05rem;
+  }
+  .swatches,
+  .motion {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 12px;
+  }
+  .swatches li {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .swatches small {
+    display: block;
+    color: var(--ink-3);
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+  .sw {
+    flex: none;
+    width: 40px;
+    height: 28px;
+    border-radius: 8px;
+    background: var(--sw-soft);
+    border: 2.5px solid var(--sw);
+  }
+  .sw[data-pending] {
+    border-style: dashed;
+  }
+  .motion li {
+    padding-left: 1.2em;
+    position: relative;
+    color: var(--ink-2);
+    line-height: 1.75;
+  }
+  .motion li::before {
+    content: "→";
+    position: absolute;
+    left: 0;
+    color: var(--ink-3);
+  }
+  .motion b {
+    color: var(--ink);
+  }
+
+  @media (max-width: 900px) {
+    .hero {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

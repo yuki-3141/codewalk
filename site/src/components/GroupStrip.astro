@@ -1,0 +1,110 @@
+---
+/**
+ * いまの章が属する区分の章を、順に並べた現在地の表示。
+ * 章立てを「処理が通る順」に並べていれば、これがそのまま通り道になる。
+ */
+import { getCollection } from "astro:content";
+import { allChapters, allGroups, chapterById } from "../lib/curriculum";
+
+interface Props {
+  current: string;
+}
+const { current } = Astro.props;
+const me = chapterById(current);
+const group = allGroups().find((g) => g.name === me.group)!;
+const built = new Set((await getCollection("chapters")).map((e) => e.id));
+const members = allChapters().filter((c) => group.chapters.includes(c.n));
+---
+
+<nav class="strip" aria-label={`区分「${group.name}」の章`}>
+  <span class="group">{group.name}</span>
+  <ol>
+    {
+      members.map((c) => {
+        const state = c.id === current ? "current" : built.has(c.id) ? "built" : "pending";
+        return (
+          <li data-state={state}>
+            {state === "built" ? (
+              <a href={`/${c.id}/`}>
+                <b>{c.n}</b>
+                <span>{c.title}</span>
+              </a>
+            ) : (
+              <span aria-current={state === "current" ? "page" : undefined} title={state === "pending" ? "準備中" : undefined}>
+                <b>{c.n}</b>
+                <span>{c.title}</span>
+              </span>
+            )}
+          </li>
+        );
+      })
+    }
+  </ol>
+</nav>
+
+<style>
+  .strip {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .group {
+    flex: none;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+  }
+  ol {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  li {
+    display: flex;
+    align-items: center;
+    flex: none;
+  }
+  li + li::before {
+    content: "";
+    width: 22px;
+    height: 2px;
+    background: var(--line);
+  }
+  li > * {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 0.25em 0.8em;
+    border-radius: 999px;
+    border: 1.5px solid var(--line);
+    background: var(--surface);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  b {
+    font-family: var(--font-mono);
+    font-weight: 800;
+  }
+  li[data-state="built"] > a:hover {
+    border-color: var(--ink-3);
+  }
+  li[data-state="current"] > * {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg);
+  }
+  li[data-state="pending"] > * {
+    border-style: dashed;
+    color: var(--ink-3);
+    background: transparent;
+  }
+</style>

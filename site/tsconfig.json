@@ -1,0 +1,8 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "include": [".astro/types.d.ts", "**/*", "../workspace/chapters/**/*", "../workspace/diagrams/**/*"],
+  "exclude": ["dist"],
+  "compilerOptions": {
+    "paths": { "@kit/*": ["./src/*"] }
+  }
+}

@@ -1,0 +1,107 @@
+/*
+ * 色と文字の決まり。図・本文・コードのすべてがここを参照する。
+ *
+ * 色には意味がある。どの図でも同じ意味で使い、色だけに頼らず形とラベルでも区別する。
+ *   --c-a〜--c-d  対象のリポジトリごとに意味を決める4色（workspace/notes/plan.md の「色の意味」）
+ *                 例：ブラウザ／サーバー／外部サービス／データ
+ *   --c-reject    弾かれた・失敗した
+ *   --c-pending   まだ作っていない章
+ * --c-a は強調の色（行の強調・リンクの印）も兼ねる。
+ */
+:root {
+  color-scheme: light;
+
+  /* 背景は白。カードやコード欄も白で、枠線と影で背景から分ける */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f2f1ee;
+  --ink: #1d1c1a;
+  --ink-2: #57544d;
+  --ink-3: #8a867c;
+  --line: #e0ddd5;
+
+  --c-a: #2f62d9;
+  --c-a-soft: #e3eafb;
+  --c-b: #0e8a6a;
+  --c-b-soft: #ddf1ea;
+  --c-c: #b86e00;
+  --c-c-soft: #f8ead3;
+  --c-d: #7a4fd6;
+  --c-d-soft: #ece4fa;
+  --c-reject: #d2364d;
+  --c-reject-soft: #fbe2e5;
+  --c-pending: #9b978d;
+  --c-pending-soft: #ebe8e1;
+
+  --hl-line: rgba(47, 98, 217, 0.1);
+  --hl-edge: #2f62d9;
+
+  --font-body: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, "Hiragino Sans", monospace;
+
+  --radius: 14px;
+  /* 上に貼り付くヘッダーの高さ。目次とコードの欄は、この下に貼り付く */
+  --header-h: 56px;
+  --sidebar-w: 272px;
+  --rail-w: 44px;
+  --shadow: 0 1px 2px rgba(29, 28, 26, 0.06), 0 6px 24px rgba(29, 28, 26, 0.06);
+  --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121418;
+    --surface: #1a1d23;
+    --surface-2: #22262e;
+    --ink: #ecebe6;
+    --ink-2: #b4b1a8;
+    --ink-3: #7d7a72;
+    --line: #2f343d;
+
+    --c-a: #7aa2ff;
+    --c-a-soft: #1d2a47;
+    --c-b: #3fd0a4;
+    --c-b-soft: #15352d;
+    --c-c: #f2b44c;
+    --c-c-soft: #3b2c12;
+    --c-d: #b69cff;
+    --c-d-soft: #2c2347;
+    --c-reject: #ff7086;
+    --c-reject-soft: #42202a;
+    --c-pending: #6f6c66;
+    --c-pending-soft: #26282d;
+
+    --hl-line: rgba(122, 162, 255, 0.14);
+    --hl-edge: #7aa2ff;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121418;
+  --surface: #1a1d23;
+  --surface-2: #22262e;
+  --ink: #ecebe6;
+  --ink-2: #b4b1a8;
+  --ink-3: #7d7a72;
+  --line: #2f343d;
+
+  --c-a: #7aa2ff;
+  --c-a-soft: #1d2a47;
+  --c-b: #3fd0a4;
+  --c-b-soft: #15352d;
+  --c-c: #f2b44c;
+  --c-c-soft: #3b2c12;
+  --c-d: #b69cff;
+  --c-d-soft: #2c2347;
+  --c-reject: #ff7086;
+  --c-reject-soft: #42202a;
+  --c-pending: #6f6c66;
+  --c-pending-soft: #26282d;
+
+  --hl-line: rgba(122, 162, 255, 0.14);
+  --hl-edge: #7aa2ff;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.35);
+}

@@ -1,0 +1,129 @@
+---
+/**
+ * ファイル全文を、基準コミットから取り出して表示する。
+ * 末尾の改行は Astro（Shiki）が1つだけ落とすので、ここでは削らない（二重に削ると、
+ * 末尾に空行のあるファイルが1行短く表示され、lines() の行数とずれる）。
+ * 行には実ファイルの行番号を data-line で持たせ、強調は Walkthrough が付け外しする。
+ */
+import { Code } from "astro:components";
+import type { ShikiTransformer } from "shiki";
+import { COMMIT_SHORT, langOf, lines, source } from "../lib/target";
+
+interface Props {
+  file: string;
+  /** 省くと拡張子から決める */
+  lang?: string;
+}
+const { file, lang = langOf(file) } = Astro.props;
+const total = lines(file).length;
+
+const numbered: ShikiTransformer = {
+  name: "numbered-lines",
+  line(node, line) {
+    node.properties["data-line"] = line;
+  },
+  code(node) {
+    // 行を block で並べるので、行の間の改行テキストは捨てる（残すと空行が挟まる）
+    node.children = node.children.filter((child) => !(child.type === "text" && child.value === "\n"));
+  },
+};
+---
+
+<div class="code-pane" data-code-pane data-file={file}>
+  <div class="head">
+    <span class="path">{file}</span>
+    <span class="info">{total} 行 · {COMMIT_SHORT}</span>
+  </div>
+  <div class="scroller" data-scroller>
+    <Code
+      code={source(file)}
+      lang={lang as any}
+      themes={{ light: "github-light", dark: "github-dark" }}
+      defaultColor={false}
+      transformers={[numbered]}
+    />
+  </div>
+</div>
+
+<style>
+  .code-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.8rem;
+  }
+  .path {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--c-a);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .info {
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+  .scroller {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .scroller :global(pre) {
+    margin: 0;
+    padding: 12px 0 40vh;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.7;
+    tab-size: 2;
+  }
+  .scroller :global(code) {
+    display: block;
+    min-width: max-content;
+  }
+  .scroller :global(.line) {
+    display: block;
+    position: relative;
+    padding: 0 20px 0 4.2em;
+    min-height: 1.7em;
+    border-left: 3px solid transparent;
+    transition: opacity 0.35s var(--ease), background-color 0.35s var(--ease), border-color 0.35s;
+  }
+  .scroller :global(.line)::before {
+    content: attr(data-line);
+    position: absolute;
+    left: 0;
+    width: 3.2em;
+    text-align: right;
+    color: var(--ink-3);
+    opacity: 0.7;
+    user-select: none;
+  }
+  .code-pane:global(.has-hl) :global(.line:not(.hl)) {
+    opacity: 0.38;
+  }
+  .scroller :global(.line.hl) {
+    background-color: var(--hl-line);
+    border-left-color: var(--hl-edge);
+  }
+  .scroller :global(.line.hl)::before {
+    color: var(--hl-edge);
+    opacity: 1;
+    font-weight: 700;
+  }
+</style>

@@ -1,0 +1,318 @@
+---
+/**
+ * 章のページ。中身は workspace/chapters/NN-slug.mdx、番号と題は workspace/notes/plan.md の表から。
+ */
+import { getCollection, render, type CollectionEntry } from "astro:content";
+import Base from "../layouts/Base.astro";
+import GroupStrip from "../components/GroupStrip.astro";
+import Sidebar from "../components/Sidebar.astro";
+import { chapterById, neighbors } from "../lib/curriculum";
+import { config, lines } from "../lib/target";
+
+export async function getStaticPaths() {
+  const entries = await getCollection("chapters");
+  return entries.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+interface Props {
+  entry: CollectionEntry<"chapters">;
+}
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+const ch = chapterById(entry.id);
+const built = new Set((await getCollection("chapters")).map((e) => e.id));
+const { prev, next } = neighbors(entry.id);
+const toc = headings.filter((h) => h.depth === 2);
+
+// 読むファイルと行数（基準コミットから数える）
+const files = entry.data.files.map((f) => ({ path: f, total: lines(f).length }));
+---
+
+<Base title={`${ch.n} ${ch.title} — ${config?.title ?? ""}`}>
+  <Sidebar slot="sidebar" current={entry.id} sections={toc} />
+  <main>
+    <div class="without-sidebar">
+      <GroupStrip current={entry.id} />
+    </div>
+
+    <header class="hero">
+      <p class="eyebrow">
+        {ch.n} · {ch.group}
+        {entry.data.status === "draft" && <span class="chip draft">書きかけ</span>}
+      </p>
+      <h1>{ch.title}</h1>
+      <p class="role">{entry.data.role}</p>
+      {
+        files.length > 0 && (
+          <ul class="files" aria-label="この章で読むファイル">
+            {files.map((f) => (
+              <li>
+                <code>{f.path}</code>
+                <span class="n">{f.total} 行</span>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+      {
+        toc.length > 1 && (
+          <nav class="toc without-sidebar" aria-label="この章の節">
+            {toc.map((h, i) => (
+              <a href={`#${h.slug}`}>
+                <span>{String(i + 1).padStart(2, "0")}</span>
+                {h.text}
+              </a>
+            ))}
+          </nav>
+        )
+      }
+    </header>
+
+    <article class="body">
+      <Content />
+    </article>
+
+    {
+      entry.data.questions && (
+        <section class="questions" aria-labelledby="q-title">
+          <p class="eyebrow">確かめる</p>
+          <h2 id="q-title">ここが分かれば読めている</h2>
+          <ol>
+            {entry.data.questions.map((q) => (
+              <li>{q}</li>
+            ))}
+          </ol>
+        </section>
+      )
+    }
+
+    <nav class="pager" aria-label="前後の章">
+      {
+        prev ? (
+          built.has(prev.id) ? (
+            <a class="prev" href={`/${prev.id}/`}>
+              <small>← 前の章</small>
+              <b>{prev.n} {prev.title}</b>
+            </a>
+          ) : (
+            <span class="prev pending">
+              <small>← 前の章（準備中）</small>
+              <b>{prev.n} {prev.title}</b>
+            </span>
+          )
+        ) : (
+          <span />
+        )
+      }
+      {
+        next ? (
+          built.has(next.id) ? (
+            <a class="next" href={`/${next.id}/`}>
+              <small>次の章 →</small>
+              <b>{next.n} {next.title}</b>
+            </a>
+          ) : (
+            <span class="next pending">
+              <small>次の章（準備中）→</small>
+              <b>{next.n} {next.title}</b>
+            </span>
+          )
+        ) : (
+          <span />
+        )
+      }
+    </nav>
+  </main>
+</Base>
+
+<style>
+  main {
+    padding: 0 clamp(16px, 4vw, 40px) 96px;
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+  /* 区分の帯と節の一覧は目次と同じ中身なので、目次を横に並べている間は出さない */
+  @media (min-width: 960px) {
+    :global(:root:not([data-sidebar="closed"])) .without-sidebar {
+      display: none;
+    }
+  }
+  .hero {
+    padding: clamp(28px, 6vw, 64px) 0 clamp(24px, 4vw, 40px);
+    border-bottom: 1px solid var(--line);
+    margin-bottom: clamp(32px, 5vw, 56px);
+  }
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+  }
+  .draft {
+    border-style: dashed;
+    color: var(--ink-3);
+    letter-spacing: 0;
+  }
+  h1 {
+    margin: 6px 0 12px;
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    line-height: 1.25;
+    font-weight: 800;
+  }
+  .role {
+    margin: 0 0 22px;
+    font-size: 1.08rem;
+    color: var(--ink-2);
+  }
+  .files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 24px;
+    padding: 0;
+    list-style: none;
+  }
+  .files li {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.3em 0.5em 0.3em 0.8em;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    font-size: 0.82rem;
+  }
+  .files code {
+    font-family: var(--font-mono);
+    font-weight: 700;
+  }
+  .files .n {
+    color: var(--ink-3);
+  }
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    font-size: 0.86rem;
+  }
+  .toc a {
+    color: var(--ink-2);
+    text-decoration: none;
+  }
+  .toc a:hover {
+    color: var(--ink);
+  }
+  .toc span {
+    font-family: var(--font-mono);
+    color: var(--ink-3);
+    margin-right: 6px;
+  }
+
+  /* 本文の文章も図とコードも、ページの幅いっぱいに。文章だけを狭く絞ると、広い画面で途中で折り返して右が空く */
+  .body > :global(:where(p, ul, ol, blockquote)) {
+    margin: 0 0 1.1em;
+  }
+  .body > :global(h2) {
+    margin: clamp(48px, 7vw, 88px) 0 14px;
+    font-size: clamp(1.5rem, 3vw, 2.05rem);
+    line-height: 1.4;
+    scroll-margin-top: 72px;
+  }
+  .body > :global(h2:first-child) {
+    margin-top: 0;
+  }
+  .body :global(p code),
+  .body :global(li code) {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    padding: 0.1em 0.38em;
+    border-radius: 6px;
+    background: var(--surface-2);
+  }
+  .body > :global(p strong) {
+    background: linear-gradient(transparent 62%, var(--c-a-soft) 62%);
+  }
+  .body > :global(:where(figure, .wt)) {
+    margin: 28px 0 36px;
+  }
+  .body > :global(table) {
+    width: 100%;
+    margin: 22px 0 28px;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    line-height: 1.65;
+  }
+  .body > :global(table) :global(:is(th, td)) {
+    padding: 0.55em 0.75em;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  .body > :global(table) :global(th) {
+    border-bottom: 2px solid var(--ink);
+    font-size: 0.8rem;
+    color: var(--ink-2);
+  }
+  .body > :global(table) :global(code) {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+
+  .questions {
+    margin-top: clamp(48px, 7vw, 96px);
+    padding: clamp(22px, 3vw, 32px);
+    border-radius: calc(var(--radius) + 4px);
+    background: var(--c-a-soft);
+    border: 1px solid color-mix(in srgb, var(--c-a) 25%, transparent);
+  }
+  .questions h2 {
+    margin: 4px 0 14px;
+    font-size: 1.35rem;
+  }
+  .questions ol {
+    margin: 0;
+    padding-left: 1.4em;
+    display: grid;
+    gap: 10px;
+  }
+  .questions li::marker {
+    font-weight: 800;
+    color: var(--c-a);
+  }
+
+  .pager {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 48px;
+  }
+  .pager > * {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 16px 20px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    text-decoration: none;
+  }
+  .pager a:hover {
+    border-color: var(--ink-3);
+  }
+  .pager .next {
+    text-align: right;
+  }
+  .pager small {
+    color: var(--ink-3);
+    font-size: 0.78rem;
+  }
+  .pager .pending {
+    border-style: dashed;
+    background: transparent;
+    color: var(--ink-3);
+  }
+  .pager span:empty {
+    border: 0;
+    background: none;
+  }
+</style>

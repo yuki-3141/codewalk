@@ -1,0 +1,6 @@
+.DS_Store
+# 利用者の中身（対象のコードの断片を含む）。それ自体が独立した Git のリポジトリになる
+workspace/
+# Claude Code の個人の設定（許可したコマンドに、対象の絶対パスなどが残る）
+.claude/settings.local.json
+CLAUDE.local.md

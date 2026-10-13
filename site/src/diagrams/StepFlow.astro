@@ -1,0 +1,334 @@
+---
+/**
+ * 1段ずつ進める流れ図（シーケンス図）。登場人物を列に並べ、矢印を順に光らせる。
+ *
+ * - lanes: 列。kind で色が決まる（a〜d は workspace/notes/plan.md の「色の意味」、neutral は無彩色）
+ * - steps: 1段＝1本の矢印。from === to なら、その列の中で起きること
+ *   mark: "key" は要点、"stop" は「起きない（止めた）」、"reject" は弾かれる
+ *   note: 下の欄に出す説明（HTML 可。<code> と <strong> を使える）。HTML として入るので、
+ *         対象のコードから読んだ文字列（firstMatch() など）を入れるときは escapeHtml() を通す
+ *   label は文字として入る（自動でエスケープされる）ので、escapeHtml() は通さない（二重になる）
+ *
+ * 使い方（mdx）：
+ *   <StepFlow label="送信の流れ"
+ *     lanes={[{ id: "ui", label: "画面", kind: "a" }, { id: "api", label: "API", kind: "b" }]}
+ *     steps={[{ from: "ui", to: "api", label: "POST /x", note: "…" }]} />
+ */
+interface Lane {
+  id: string;
+  label: string;
+  kind: "neutral" | "a" | "b" | "c" | "d";
+}
+interface Step {
+  from: string;
+  to: string;
+  label: string;
+  note?: string;
+  mark?: "key" | "stop" | "reject";
+}
+interface Props {
+  lanes: Lane[];
+  steps: Step[];
+  label: string;
+}
+const { lanes, steps, label } = Astro.props;
+const col = (id: string) => {
+  const i = lanes.findIndex((l) => l.id === id);
+  if (i === -1) throw new Error(`[StepFlow] 列 ${id} がありません`);
+  return i;
+};
+const N = lanes.length;
+const center = (i: number) => ((i + 0.5) / N) * 100;
+const rows = steps.map((s) => {
+  const a = col(s.from);
+  const b = col(s.to);
+  const self = a === b;
+  const left = self ? center(a) : Math.min(center(a), center(b));
+  const width = self ? 0 : Math.abs(center(a) - center(b));
+  return { ...s, self, left, width, dir: b >= a ? "right" : "left", kind: lanes[b].kind };
+});
+---
+
+<figure class="sf" data-figure="stepflow" data-stepflow tabindex="0" aria-label={`${label}。左右の矢印キーで進められます`}>
+  <div class="scroll">
+    <div class="grid" style={`--n: ${N}`}>
+      <div class="lanes">
+        {lanes.map((l) => <div class="lane-head" data-kind={l.kind}>{l.label}</div>)}
+      </div>
+      <div class="rows">
+        {lanes.map((l, i) => <span class="life" data-kind={l.kind} style={`left: ${center(i)}%`} />)}
+        {
+          rows.map((r, i) => (
+            <div class="row" data-i={i} data-mark={r.mark} data-kind={r.kind}>
+              <span class="num">{i + 1}</span>
+              {r.self ? (
+                <div class="self" style={`left: ${r.left}%`}>
+                  <span class="label">{r.label}</span>
+                </div>
+              ) : (
+                <div class="arrow" data-dir={r.dir} style={`left: ${r.left}%; width: ${r.width}%`}>
+                  <span class="label">{r.label}</span>
+                </div>
+              )}
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+  <figcaption class="panel">
+    <div class="caption" aria-live="polite">
+      <span class="eyebrow counter"></span>
+      <p class="note"></p>
+    </div>
+    <div class="buttons">
+      <button class="btn" type="button" data-act="all">全部見る</button>
+      <button class="btn" type="button" data-act="prev">← 前へ</button>
+      <button class="btn" type="button" data-act="next" data-variant="primary">次へ →</button>
+    </div>
+  </figcaption>
+  {/* < を \u003c にして、説明文に </script> があっても埋め込みの外へ抜けないようにする */}
+  <script type="application/json" data-notes set:html={JSON.stringify(steps.map((s) => s.note ?? s.label)).replaceAll("<", "\\u003c")} />
+</figure>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>("[data-stepflow]")) {
+    const notes = JSON.parse(root.querySelector("[data-notes]")!.textContent!) as string[];
+    const rows = [...root.querySelectorAll<HTMLElement>(".row")];
+    const counter = root.querySelector<HTMLElement>(".counter")!;
+    const note = root.querySelector<HTMLElement>(".note")!;
+    const prev = root.querySelector<HTMLButtonElement>('[data-act="prev"]')!;
+    const next = root.querySelector<HTMLButtonElement>('[data-act="next"]')!;
+    let current = 0;
+    let showAll = false;
+
+    function render() {
+      rows.forEach((r, i) => {
+        r.dataset.state = showAll ? "done" : i < current ? "done" : i === current ? "current" : "todo";
+      });
+      counter.textContent = showAll ? `全 ${rows.length} 段` : `${current + 1} / ${rows.length}`;
+      note.innerHTML = showAll ? "流れ全体です。「次へ」で1段ずつに戻ります。" : notes[current];
+      prev.disabled = !showAll && current === 0;
+      next.disabled = !showAll && current === rows.length - 1;
+    }
+    function go(i: number) {
+      showAll = false;
+      current = Math.max(0, Math.min(rows.length - 1, i));
+      render();
+    }
+    root.addEventListener("click", (e) => {
+      const act = (e.target as HTMLElement).closest<HTMLElement>("[data-act]")?.dataset.act;
+      if (act === "next") go(showAll ? 0 : current + 1);
+      if (act === "prev") go(current - 1);
+      if (act === "all") {
+        showAll = true;
+        render();
+      }
+      const row = (e.target as HTMLElement).closest<HTMLElement>(".row");
+      if (row) go(Number(row.dataset.i));
+    });
+    root.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") (e.preventDefault(), go(current + 1));
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") (e.preventDefault(), go(current - 1));
+    });
+    render();
+  }
+</script>
+
+<style>
+  .sf {
+    margin: 28px 0 36px;
+    border: 1px solid var(--line);
+    border-radius: calc(var(--radius) + 4px);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .sf:focus-visible {
+    outline-offset: 4px;
+  }
+  .scroll {
+    overflow-x: auto;
+  }
+  .grid {
+    min-width: calc(var(--n) * 190px);
+    padding: 0 28px 0 52px;
+  }
+  .lanes {
+    display: grid;
+    grid-template-columns: repeat(var(--n), 1fr);
+    padding: 16px 0 10px;
+    position: sticky;
+    top: 0;
+  }
+  .lane-head {
+    justify-self: center;
+    padding: 0.25em 0.9em;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    border: 1.5px solid var(--k);
+    color: var(--k);
+    background: var(--ks);
+  }
+  [data-kind="neutral"] { --k: var(--ink-2); --ks: var(--surface-2); }
+  [data-kind="a"] { --k: var(--c-a); --ks: var(--c-a-soft); }
+  [data-kind="b"] { --k: var(--c-b); --ks: var(--c-b-soft); }
+  [data-kind="c"] { --k: var(--c-c); --ks: var(--c-c-soft); }
+  [data-kind="d"] { --k: var(--c-d); --ks: var(--c-d-soft); }
+
+  .rows {
+    position: relative;
+    padding: 6px 0 18px;
+  }
+  .life {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 2px dashed color-mix(in srgb, var(--k) 35%, transparent);
+  }
+  .row {
+    position: relative;
+    height: 52px;
+    cursor: pointer;
+    transition: opacity 0.35s var(--ease);
+  }
+  .row[data-state="todo"] {
+    opacity: 0.18;
+  }
+  .row[data-state="done"] {
+    opacity: 0.6;
+  }
+  .num {
+    position: absolute;
+    left: -40px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    font-size: 0.72rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    background: var(--surface-2);
+    color: var(--ink-2);
+  }
+  .row[data-state="current"] .num {
+    background: var(--ink);
+    color: var(--bg);
+  }
+
+  .arrow {
+    position: absolute;
+    top: 30px;
+    height: 0;
+    border-top: 2.5px solid var(--k);
+  }
+  .arrow::after {
+    content: "";
+    position: absolute;
+    top: -7px;
+    border: 6px solid transparent;
+  }
+  .arrow[data-dir="right"]::after {
+    right: -2px;
+    border-left: 9px solid var(--k);
+    border-right: 0;
+  }
+  .arrow[data-dir="left"]::after {
+    left: -2px;
+    border-right: 9px solid var(--k);
+    border-left: 0;
+  }
+  .arrow .label {
+    position: absolute;
+    bottom: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0 6px;
+    background: var(--surface);
+    text-align: center;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .self {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    max-width: calc(100% / var(--n) * 1.9);
+    padding: 0.35em 0.8em;
+    border-radius: 10px;
+    border: 1.5px solid var(--k);
+    background: var(--ks);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row[data-state="current"] .arrow {
+    border-top-width: 3.5px;
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--k) 50%, transparent));
+  }
+  .row[data-state="current"] .label {
+    font-weight: 700;
+  }
+  .row[data-state="current"] .self {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--k) 22%, transparent);
+  }
+  .row[data-mark="key"] .self,
+  .row[data-mark="key"] .label {
+    font-weight: 800;
+  }
+  .row[data-mark="stop"] .self {
+    border-style: dashed;
+    border-color: var(--c-reject);
+    background: var(--c-reject-soft);
+    color: var(--c-reject);
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+  }
+  .row[data-mark="reject"] .arrow {
+    border-top-color: var(--c-reject);
+    border-top-style: dashed;
+  }
+
+  .panel {
+    display: flex;
+    gap: 16px 28px;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 14px 22px 18px;
+    border-top: 1px solid var(--line);
+  }
+  .caption {
+    flex: 1 1 24em;
+    min-height: 4.6em;
+  }
+  .note {
+    margin: 2px 0 0;
+    max-width: 40em;
+    color: var(--ink-2);
+  }
+  .note :global(code) {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    padding: 0.1em 0.38em;
+    border-radius: 6px;
+    background: var(--surface-2);
+  }
+  .note :global(strong) {
+    color: var(--ink);
+  }
+  .buttons {
+    display: flex;
+    gap: 8px;
+  }
+</style>

@@ -1,0 +1,332 @@
+---
+/**
+ * 章のページの左に出す目次。全章を区分ごとに並べ（作成済みの章だけリンク）、いまの章の下に節を出す。
+ * 節は読んでいる位置に合わせて印が動く。
+ *
+ * 上端のボタンで開け閉めする。畳むと細い帯（--rail-w）だけ残り、同じボタンで開き直せる。
+ *   広い画面   … 本文の横に並べる。畳んだかどうかを覚える（localStorage の sidebar）
+ *   狭い画面   … 畳んで始め、開くと本文に重ねる。覚えない
+ * 畳んだ状態は :root[data-sidebar="closed"]。描画前の値は Base.astro が当てる。
+ */
+import { getCollection } from "astro:content";
+import { allChapters, allGroups } from "../lib/curriculum";
+
+interface Props {
+  current: string;
+  /** いまの章の `##` 見出し */
+  sections: { slug: string; text: string }[];
+}
+const { current, sections } = Astro.props;
+const built = new Set((await getCollection("chapters")).map((e) => e.id));
+const chapters = allChapters();
+const groups = allGroups().map((g) => ({ name: g.name, members: chapters.filter((c) => g.chapters.includes(c.n)) }));
+---
+
+<aside class="sidebar" id="sidebar" aria-label="目次">
+  <div class="bar">
+    <a class="home" href="/">全体の地図</a>
+    <button class="toggle" type="button" id="sidebar-toggle" aria-controls="sidebar-nav" aria-expanded="true" aria-label="目次を閉じる">
+      <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <path d="M10 3.5 5.5 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <span class="rail-label" aria-hidden="true">目次</span>
+    </button>
+  </div>
+  <nav id="sidebar-nav">
+    {
+      groups.map((g) => (
+        <section>
+          <p class="group">{g.name}</p>
+          <ol>
+            {g.members.map((c) => {
+              const state = c.id === current ? "current" : built.has(c.id) ? "built" : "pending";
+              return (
+                <li data-state={state}>
+                  {state === "pending" ? (
+                    <span class="ch" title="準備中">
+                      <b>{c.n}</b>
+                      <span>{c.title}</span>
+                    </span>
+                  ) : (
+                    <a class="ch" href={`/${c.id}/`} aria-current={state === "current" ? "page" : undefined}>
+                      <b>{c.n}</b>
+                      <span>{c.title}</span>
+                    </a>
+                  )}
+                  {state === "current" && sections.length > 0 && (
+                    <ol class="sections">
+                      {sections.map((h) => (
+                        <li>
+                          <a href={`#${h.slug}`} data-section={h.slug}>
+                            {h.text}
+                          </a>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ))
+    }
+  </nav>
+</aside>
+<div class="backdrop" data-sidebar-backdrop></div>
+
+<script>
+  const root = document.documentElement;
+  const sidebar = document.getElementById("sidebar")!;
+  const toggle = document.getElementById("sidebar-toggle")!;
+  const narrow = matchMedia("(max-width: 959px)");
+  const isOpen = () => root.dataset.sidebar !== "closed";
+
+  // いまの章が見えるように、目次の中だけを送る（ページは動かさない）
+  function revealCurrent() {
+    const here = sidebar.querySelector<HTMLElement>('[aria-current="page"]');
+    if (here) sidebar.scrollTop = here.offsetTop - sidebar.clientHeight / 3;
+  }
+
+  function setOpen(open: boolean, remember = !narrow.matches) {
+    if (open) delete root.dataset.sidebar;
+    else root.dataset.sidebar = "closed";
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-label", open ? "目次を閉じる" : "目次を開く");
+    if (open) revealCurrent();
+    if (remember) {
+      try {
+        if (open) localStorage.removeItem("sidebar");
+        else localStorage.setItem("sidebar", "closed");
+      } catch {}
+    }
+  }
+
+  toggle.addEventListener("click", () => setOpen(!isOpen()));
+  // 狭い画面で重ねて開いたときは、外側を押す・Esc・リンクを押すで閉じる
+  document.querySelector("[data-sidebar-backdrop]")!.addEventListener("click", () => setOpen(false));
+  sidebar.addEventListener("click", (e) => {
+    if (narrow.matches && (e.target as Element).closest("nav a")) setOpen(false);
+  });
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && narrow.matches && isOpen()) {
+      setOpen(false);
+      toggle.focus();
+    }
+  });
+  // 画面の幅が境を越えたら、その幅の既定（狭い：畳む／広い：覚えている状態）に戻す
+  narrow.addEventListener("change", () => {
+    let saved = null;
+    try {
+      saved = localStorage.getItem("sidebar");
+    } catch {}
+    setOpen(!narrow.matches && saved !== "closed", false);
+  });
+  setOpen(isOpen(), false);
+
+  const links = [...sidebar.querySelectorAll<HTMLAnchorElement>("[data-section]")];
+  const heads = links
+    .map((a) => document.getElementById(a.dataset.section!))
+    .filter((h): h is HTMLElement => h !== null);
+
+  // 画面の上から 30% の線を越えた最後の見出しを「いま読んでいる節」とする
+  let queued = false;
+  function mark() {
+    queued = false;
+    const line = innerHeight * 0.3;
+    const active = heads.filter((h) => h.getBoundingClientRect().top < line).at(-1);
+    for (const a of links) a.toggleAttribute("data-active", a.dataset.section === active?.id);
+  }
+  addEventListener(
+    "scroll",
+    () => {
+      if (!queued) requestAnimationFrame(mark);
+      queued = true;
+    },
+    { passive: true },
+  );
+  mark();
+</script>
+
+<style>
+  .sidebar {
+    position: sticky;
+    top: var(--header-h);
+    height: calc(100vh - var(--header-h));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-right: 1px solid var(--line);
+    background: var(--bg);
+    font-size: 0.84rem;
+    line-height: 1.55;
+  }
+
+  .bar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 10px 8px 18px;
+    background: var(--bg);
+  }
+  .home {
+    color: var(--ink-2);
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .home::before {
+    content: "← ";
+  }
+  .home:hover {
+    color: var(--ink);
+  }
+  .toggle {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: none;
+    color: var(--ink-2);
+    font: inherit;
+    cursor: pointer;
+  }
+  .toggle:hover {
+    border-color: var(--line);
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+  .toggle svg {
+    transition: transform 0.18s var(--ease);
+  }
+  .rail-label {
+    display: none;
+    writing-mode: vertical-rl;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+  }
+
+  /* 畳んだ姿：細い帯に、開くボタンだけ */
+  :global(:root[data-sidebar="closed"]) .sidebar {
+    overflow: hidden;
+  }
+  :global(:root[data-sidebar="closed"]) .bar {
+    justify-content: center;
+    padding: 10px 0;
+  }
+  :global(:root[data-sidebar="closed"]) :is(.home, nav) {
+    display: none;
+  }
+  :global(:root[data-sidebar="closed"]) .toggle svg {
+    transform: rotate(180deg);
+  }
+  :global(:root[data-sidebar="closed"]) .rail-label {
+    display: block;
+  }
+
+  /* 狭い画面で開いたときは、本文に重ねる（列の幅は帯のまま） */
+  .backdrop {
+    display: none;
+  }
+  @media (max-width: 959px) {
+    :global(:root:not([data-sidebar="closed"])) .sidebar {
+      position: fixed;
+      top: var(--header-h);
+      left: 0;
+      bottom: 0;
+      height: auto;
+      width: min(300px, 86vw);
+      z-index: 19;
+      box-shadow: var(--shadow);
+    }
+    :global(:root:not([data-sidebar="closed"])) .backdrop {
+      display: block;
+      position: fixed;
+      inset: var(--header-h) 0 0 0;
+      z-index: 18;
+      background: color-mix(in srgb, var(--ink) 28%, transparent);
+    }
+  }
+
+  nav {
+    display: grid;
+    gap: 18px;
+    padding: 10px 14px 48px 18px;
+  }
+  .group {
+    margin: 0 0 6px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+  }
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ch {
+    display: flex;
+    gap: 8px;
+    padding: 0.35em 0.6em;
+    border-radius: 8px;
+    text-decoration: none;
+  }
+  .ch b {
+    flex: none;
+    font-family: var(--font-mono);
+    font-weight: 800;
+    color: var(--ink-3);
+  }
+  [data-state="built"] > .ch:hover {
+    background: var(--surface-2);
+  }
+  [data-state="current"] > .ch {
+    background: var(--ink);
+    color: var(--bg);
+    font-weight: 700;
+  }
+  [data-state="current"] > .ch b {
+    color: inherit;
+  }
+  [data-state="pending"] > .ch {
+    color: var(--ink-3);
+  }
+  [data-state="pending"] > .ch span::after {
+    content: "準備中";
+    margin-left: 6px;
+    padding: 0 0.45em;
+    border: 1px dashed var(--c-pending);
+    border-radius: 999px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  .sections {
+    margin: 4px 0 6px 1.35em;
+    border-left: 1.5px solid var(--line);
+  }
+  .sections a {
+    display: block;
+    margin-left: -1.5px;
+    padding: 0.25em 0.6em 0.25em 0.9em;
+    border-left: 1.5px solid transparent;
+    color: var(--ink-2);
+    text-decoration: none;
+  }
+  .sections a:hover {
+    color: var(--ink);
+  }
+  .sections a[data-active] {
+    border-left-color: var(--c-a);
+    color: var(--ink);
+    font-weight: 700;
+  }
+</style>

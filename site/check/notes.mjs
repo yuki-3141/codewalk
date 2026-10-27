@@ -6,7 +6,7 @@
  * 主張の中身が根拠と合っているかは、機械では分からない（notes-reviewer が読む）。
  *
  *   章立て    … workspace/notes/plan.md の表が読めるか、読むコードが基準コミットにあるか
- *   形        … frontmatter（role・files）、`# NN 題` が章立てと一致、問いが3つ、
+ *   形        … frontmatter（role・files・commit）、`# NN 題` が章立てと一致、問いが3つ、
  *               節の中は箇条書きと ```text の図だけ
  *   根拠      … 主張ごとに1つ以上。種類は4つ
  *                 code `path` `アンカー` [〜 `終わりの行の先頭`]  … ちょうど1行に一致する（〜 は ～ や ~ でもよい）
@@ -178,10 +178,11 @@ function checkEvidence(where, text) {
 function parseFrontmatter(where, text) {
   const m = text.match(/^---\n([\s\S]*?)\n---\n/);
   if (!m) return fail(where, "先頭に frontmatter（--- で囲む）がありません"), null;
-  const fm = { role: "", files: [] };
+  const fm = { role: "", files: [], commit: null };
   let inFiles = false;
   for (const line of m[1].split("\n")) {
     if (/^role:\s*/.test(line)) (fm.role = line.replace(/^role:\s*/, "").trim()), (inFiles = false);
+    else if (/^commit:\s*/.test(line)) (fm.commit = line.replace(/^commit:\s*/, "").trim().replace(/^["']|["']$/g, "")), (inFiles = false);
     else if (/^files:\s*$/.test(line)) inFiles = true;
     else if (/^files:\s*\S/.test(line)) fail(where, "frontmatter の files は1行に1つ、「  - パス」の形で書きます（[a, b] の形は読まない）");
     else if (inFiles && /^\s+- /.test(line)) fm.files.push(line.replace(/^\s+- /, "").trim().replace(/^["']|["']$/g, ""));
@@ -204,6 +205,10 @@ for (const c of wanted) {
   if (!parsed) continue;
   const { fm, body, offset } = parsed;
   if (!fm.role) fail(rel, "frontmatter に role（役割の1行）がありません");
+  // commit は、メモを確かめた基準コミット。省くと、メモを最後にコミットしたときの設定の commit とみなす
+  // 変わらなかった章では前の基準コミットのまま残るので、今の基準コミットと違ってもよい（追いついているかは check:progress が見る）
+  if (fm.commit !== null && !/^[0-9a-f]{7,40}$/.test(fm.commit))
+    fail(rel, `frontmatter の commit は基準コミットの ID（16進の7〜40桁）です: ${fm.commit}`);
   const planFiles = [...c.files].sort().join(", ");
   if ([...fm.files].sort().join(", ") !== planFiles)
     fail(rel, `frontmatter の files が章立ての「読むコード」と違います（メモ: ${fm.files.join(", ") || "なし"} / 章立て: ${planFiles || "なし"}）`);

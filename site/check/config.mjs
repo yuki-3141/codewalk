@@ -249,6 +249,85 @@ export function memoHeadings(root, id) {
   return headings.filter((h) => h !== QUESTIONS_HEADING);
 }
 
+/** 事実メモの根拠（code・doc）が指すファイル。メモが無ければ空 */
+export function citedFiles(root, id) {
+  const file = join(workspaceDir(root), "notes", `${id}.md`);
+  if (!existsSync(file)) return [];
+  return [...new Set([...readText(file).matchAll(/^\s+- (?:code|doc) `([^`]+)`/gm)].map((m) => m[1]))];
+}
+
+/** 事実メモの frontmatter の files と commit（メモを確かめた基準コミット。無ければ null） */
+function memoFrontmatter(text) {
+  const fm = text.match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? "";
+  const files = [...(fm.match(/^files:\s*\n((?:\s+- .*(?:\n|$))*)/m)?.[1] ?? "").matchAll(/- (.+)/g)].map((m) =>
+    m[1].trim().replace(/^["']|["']$/g, ""),
+  );
+  const commit = fm.match(/^commit:\s*["']?([0-9a-f]{7,40})["']?\s*$/m)?.[1] ?? null;
+  return { files, commit };
+}
+
+/**
+ * 基準コミットに追いついていない事実メモ（章の id → 理由）。
+ *
+ * 基準コミットを上げたあと、/codewalk がこの章を1章ずつ直す。直るまで、サイトはこの章を
+ * 準備中として出し、ビルドしない（アンカーがずれた章があっても、ほかの章を確かめられるように）。
+ *
+ * メモを確かめた基準コミットは、frontmatter の commit。無ければ、メモを最後にコミットしたときの
+ * 設定の commit。それが今の基準コミットと違い、そのあいだに読むコードかメモの根拠が指すファイルが
+ * 変わっていれば、追いついていない。章立ての「読むコード」とメモの files が違うときも（章立てを合わせた直後）。
+ */
+export function notesBehind(root, config, plan) {
+  const behind = new Map();
+  if (!config || !plan) return behind;
+  const ws = workspaceDir(root);
+  const wsIsGit = existsSync(join(ws, ".git"));
+  const wsGit = (...args) => execFileSync("git", ["-C", ws, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  for (const c of plan.chapters) {
+    const file = join(ws, "notes", `${c.id}.md`);
+    if (!existsSync(file)) continue;
+    const fm = memoFrontmatter(readText(file));
+    if ([...fm.files].sort().join("\n") !== [...c.files].sort().join("\n")) {
+      behind.set(c.id, { base: fm.commit, changed: [], reason: "章立ての「読むコード」とメモの files が違う" });
+      continue;
+    }
+    let base = fm.commit;
+    if (!base && wsIsGit) {
+      try {
+        const last = wsGit("log", "-1", "--format=%H", "--", `notes/${c.id}.md`);
+        if (last) base = JSON.parse(wsGit("show", `${last}:codewalk.config.json`)).commit ?? null;
+      } catch {
+        base = null;
+      }
+    }
+    // まだコミットしていないメモ（書いている途中）は、今の基準コミットで書いているとみなす
+    if (!base || config.commit.startsWith(base)) continue;
+    const paths = [...new Set([...c.files, ...citedFiles(root, c.id)])];
+    if (paths.length === 0) continue;
+    let changed;
+    try {
+      changed = git(config, [
+        "--literal-pathspecs",
+        "-c",
+        "core.quotePath=false",
+        "diff",
+        "--no-textconv",
+        "--no-ext-diff",
+        "--no-renames",
+        "--name-only",
+        base,
+        config.commit,
+        "--",
+        ...paths,
+      ]).trim();
+    } catch {
+      behind.set(c.id, { base, changed: [], reason: `確かめた基準コミット ${base.slice(0, 7)} が対象のリポジトリにありません` });
+      continue;
+    }
+    if (changed) behind.set(c.id, { base, changed: changed.split("\n"), reason: `${base.slice(0, 7)} から変わった: ${changed.split("\n").join(", ")}` });
+  }
+  return behind;
+}
+
 /**
  * サイトの章（workspace/chapters/*.mdx）の basedOn を、ビルドせずに読む。
  * アンカーがずれてビルドが通らないときでも、「要見直し」の章を挙げられるように。

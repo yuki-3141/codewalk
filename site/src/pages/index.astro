@@ -8,13 +8,12 @@
  * 章の並びと区分は章立てから、ファイル数と行数は基準コミットから計算する。
  * 設定や章立てがまだ無いとき（clone した直後）は、次にすることを出す。
  */
-import { getCollection } from "astro:content";
 import Base from "../layouts/Base.astro";
-import { allChapters, allGroups, hasPlan, legend, planIntro } from "../lib/curriculum";
+import { allChapters, allGroups, builtChapters, hasPlan, legend, planIntro } from "../lib/curriculum";
 import { COMMIT_SHORT, config, lines } from "../lib/target";
 
 const chapters = allChapters();
-const built = new Set((await getCollection("chapters")).map((e) => e.id));
+const built = new Set((await builtChapters()).map((e) => e.id));
 const byN = new Map(chapters.map((c) => [c.n, c]));
 
 // 章立てが読むファイル（重なりを除く）と、その行数。設定が無ければ数えない（案内の画面を出す）
@@ -24,7 +23,7 @@ const totalLines = readFiles.reduce((sum, f) => sum + lines(f).length, 0);
 const colors = [
   ...legend().map((l) => ({ v: `--c-${l.kind}`, name: l.name, note: l.note })),
   { v: "--c-reject", name: "弾く・失敗", note: "弾かれた入力、エラー、取り下げ" },
-  { v: "--c-pending", name: "準備中", note: "まだ作っていない章（破線）" },
+  { v: "--c-pending", name: "準備中", note: "まだ作っていない章、基準コミットに合わせて直している章（破線）" },
 ];
 
 const firstBuilt = chapters.find((c) => built.has(c.id));

@@ -9,6 +9,7 @@
  *   コード        … 表示したコードが、基準コミットのファイルと1行も違わないか
  *   章とメモ      … 事実メモの `##` を covers がすべて扱っているか（done の章は必須）、files が章立てと同じか
  *   メモの鮮度    … 書き起こした後に、事実メモが変わっていないか（workspace/ の Git の履歴で見る）
+ *   メモの要更新  … 基準コミットに追いついていないメモの章は、ビルドしていない（準備中）。その章へのリンクは失敗にしない
  *   中身の置き場所 … 利用者の中身や生成物がキットの Git に入っていないか、workspace/ の push の守り
  *
  * ✗ が1つでもあれば終了コード 1。! は要確認の知らせで、失敗にはしない。
@@ -61,6 +62,7 @@ if (!config) {
 if (!existsSync(join(DIST, "meta.json"))) fail("site/dist がありません。npm --prefix site run check で、ビルドから実行してください");
 const meta = JSON.parse(readFileSync(join(DIST, "meta.json"), "utf8"));
 const plan = loadPlan(ROOT);
+const behind = new Set(meta.behind ?? []);
 
 const errors = [];
 const notes = [];
@@ -102,6 +104,8 @@ for (const [file, raw] of pages) {
     const path = decodeURIComponent(url.pathname);
     const target = join(DIST, path.endsWith("/") ? `${path}index.html` : path);
     if (!existsSync(target)) {
+      const id = path.match(/^\/(\d{2}-[a-z0-9-]+)\//)?.[1];
+      if (id && behind.has(id)) continue; // メモが追いつけばビルドされる
       errors.push(`リンク切れ: ${here} → ${href}`);
       continue;
     }
@@ -122,7 +126,7 @@ if (known) {
   const sources = [join(WS, "chapters"), join(WS, "diagrams"), join(SITE, "src", "diagrams")].flatMap((d) =>
     existsSync(d)
       ? readdirSync(d)
-          .filter((f) => /\.(mdx|astro)$/.test(f))
+          .filter((f) => /\.(mdx|astro)$/.test(f) && !behind.has(f.replace(/\.mdx$/, "")))
           .map((f) => join(d, f))
       : [],
   );
@@ -214,6 +218,8 @@ if (known)
 line(!errors.some((e) => e.startsWith("コード")), `コード ${codeLines} 行を基準コミットと照合`);
 console.log("  見出しの対応");
 for (const c of coverage) console.log(`    ${c}`);
+if (behind.size)
+  console.log(`! メモが基準コミットに追いついていない章 ${[...behind].join(" ")} は、準備中として出し、ビルドしていません（/codewalk で直す。理由は npm --prefix site run check:progress）`);
 for (const n of notes) console.log(`! ${n}`);
 if (errors.length) {
   console.log("");

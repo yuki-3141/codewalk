@@ -12,9 +12,8 @@
  * 書き換えはしない。✗ は設定・章立て・コミットが読めないときだけ。
  */
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
-import { gitShow, loadConfig, loadPlan, readText, splitLines, workspaceDir } from "./config.mjs";
+import { dirname, extname, resolve } from "node:path";
+import { citedFiles, gitShow, loadConfig, loadPlan, splitLines } from "./config.mjs";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const stop = (msg) => {
@@ -139,16 +138,10 @@ for (const e of fresh) console.log(`    ${e.to}（${e.add} 行）`);
 if (elsewhere) console.log(`  ほかの場所に増えたファイル ${elsewhere} 個（git -C <repo> diff --no-textconv --no-ext-diff --name-status ${old.slice(0, 7)}..${target.slice(0, 7)} で見る）`);
 
 // ── 章ごと ─────────────────────────────────────────────
-/** メモの根拠（code・doc）が指すファイル */
-function cited(id) {
-  const file = join(workspaceDir(ROOT), "notes", `${id}.md`);
-  if (!existsSync(file)) return [];
-  return [...readText(file).matchAll(/^\s+- (?:code|doc) `([^`]+)`/gm)].map((m) => m[1]);
-}
 console.log("\n章ごと（読むコードと、メモの根拠が指すファイルのうち、変わったもの）");
 const untouched = [];
 for (const c of plan.chapters) {
-  const hits = [...new Set([...c.files, ...cited(c.id)])].map((f) => entries.get(f)).filter(Boolean);
+  const hits = [...new Set([...c.files, ...citedFiles(ROOT, c.id)])].map((f) => entries.get(f)).filter(Boolean);
   if (hits.length) console.log(`  ${c.id}  ${hits.map(show).join("  ")}`);
   else untouched.push(c.id);
 }

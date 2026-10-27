@@ -8,8 +8,7 @@
  *   狭い画面   … 畳んで始め、開くと本文に重ねる。覚えない
  * 畳んだ状態は :root[data-sidebar="closed"]。描画前の値は Base.astro が当てる。
  */
-import { getCollection } from "astro:content";
-import { allChapters, allGroups } from "../lib/curriculum";
+import { allChapters, allGroups, builtChapters } from "../lib/curriculum";
 
 interface Props {
   current: string;
@@ -17,7 +16,7 @@ interface Props {
   sections: { slug: string; text: string }[];
 }
 const { current, sections } = Astro.props;
-const built = new Set((await getCollection("chapters")).map((e) => e.id));
+const built = new Set((await builtChapters()).map((e) => e.id));
 const chapters = allChapters();
 const groups = allGroups().map((g) => ({ name: g.name, members: chapters.filter((c) => g.chapters.includes(c.n)) }));
 ---

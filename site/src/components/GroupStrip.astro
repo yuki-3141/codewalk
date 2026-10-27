@@ -3,8 +3,7 @@
  * いまの章が属する区分の章を、順に並べた現在地の表示。
  * 章立てを「処理が通る順」に並べていれば、これがそのまま通り道になる。
  */
-import { getCollection } from "astro:content";
-import { allChapters, allGroups, chapterById } from "../lib/curriculum";
+import { allChapters, allGroups, builtChapters, chapterById } from "../lib/curriculum";
 
 interface Props {
   current: string;
@@ -12,7 +11,7 @@ interface Props {
 const { current } = Astro.props;
 const me = chapterById(current);
 const group = allGroups().find((g) => g.name === me.group)!;
-const built = new Set((await getCollection("chapters")).map((e) => e.id));
+const built = new Set((await builtChapters()).map((e) => e.id));
 const members = allChapters().filter((c) => group.chapters.includes(c.n));
 ---
 

@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | ① 調べる | `/codewalk-setup` | `codewalk.config.json`、`notes/plan.md` | `npm run check:notes`、`npm run check` |
 | ② 事実メモ | `/codewalk-notes` | `notes/NN-slug.md` | `npm run check:notes`、`notes-reviewer` |
 | ③ サイト | `/codewalk-site` | `chapters/NN-slug.mdx`、`diagrams/*.astro` | `npm run check`、`npm run check:visual`、`site-reviewer` |
-| ④ 追従 | `/codewalk-update` | 基準コミットを上げ、①〜③の手順で変わった章（または全章）を直す | `npm run check:update`、①〜③の検証 |
+| ④ 追従 | `/codewalk-update` | 基準コミットを上げ、章立てを合わせる（または作り直す）。章は `/codewalk` が「メモ 要更新」として1章ずつ直す | `npm run check:update`、`npm run check:progress` |
 
 npm スクリプトは、キットのルートから `npm --prefix site run …` で呼ぶ。**`cd` しない**（Claude Code の Bash は作業ディレクトリが次の呼び出しに残り、後の `git -C workspace …` や2回目の `cd site` が失敗する）。検証が出すコマンドも、キットのルートで実行する形になっている。
 

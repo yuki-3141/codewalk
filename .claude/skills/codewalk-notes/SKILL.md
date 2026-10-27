@@ -16,14 +16,14 @@ disable-model-invocation: true
 ## 0. 対象を決める
 
 - **引数なし**：メモがまだ無い章のうち、最も若い番号の1章
-- **章番号**（`05`）：その1章。メモがもうあれば、書き直しではなく**直し**として扱う（工程3で既存のメモを土台にする。対象の更新で根拠がずれたときもこれ）
+- **章番号**（`05`）：その1章。メモがもうあれば、書き直しではなく**直し**として扱う（工程3で既存のメモを土台にする。基準コミットを上げて `check:progress` が「メモ 要更新」と出した章もこれ）
 - **範囲**（`05-09`）：若い順に1章ずつ。**1章ごとに工程1〜7を終えてから次へ進む**（章ごとに1コミット）
 
 ## 1. 前提を確かめる
 
 - `git status`（キット）と `git -C workspace status`：未コミットの変更があれば**止めて報告する**
 - `workspace/codewalk.config.json` と `workspace/notes/plan.md` がある。無ければ `/codewalk-setup` を案内して止める
-- `npm --prefix site run check:notes` が通る状態から始める（既存のメモが壊れていたら先に直す。対象の更新で直すときは、この章の ✗ は直す対象なので、ほかの章が通っていればよい）
+- `npm --prefix site run check:notes` が通る状態から始める（既存のメモが壊れていたら先に直す）。ただし、この章と、`npm --prefix site run check:progress` が「メモ 要更新」と出した章の ✗ はよい（基準コミットを上げたあとで、これから1章ずつ直すもの）
 - 基準コミットが対象のリポジトリにあるか（`check:notes` が確かめる）。**対象のリポジトリでは checkout・fetch をしない**
 
 ## 2. 読む
@@ -38,10 +38,14 @@ disable-model-invocation: true
 - 判断の記録（`workspace/codewalk.config.json` の `decisions`、README、`docs/`）のうち、このファイルに関わるもの
 - 「なぜ」が文書に無いときは、履歴を見る：`git -C <repo> log --format='%h %s' <commit> -- <path>`、必要なら `git -C <repo> show --no-textconv --no-ext-diff <sha>` で差分とメッセージを読む（`--no-textconv --no-ext-diff` は、対象の `.git/config` に仕込まれた変換のコマンドを走らせないため）
 - 書き終えた前の章のメモ（同じことを別の言葉で言わないため。参照は「NN章で読む／読んだ」の形にする）
+- **「メモ 要更新」の直し**：`check:progress` が出す差分のコマンド（`git -C <repo> diff --no-textconv --no-ext-diff <確かめた基準>..<基準> -- …`）で、変わった行を読む。アンカーが外れていなくても、差分に出た行に当たる主張は、中身を新しいコミットで確かめ直す
 
 ## 3. 書く
 
 `format.md` の形で `workspace/notes/NN-slug.md` を書く。
+
+- frontmatter の `commit` を、今の基準コミットの短い ID にする（`workspace/codewalk.config.json` の `commit` の先頭7桁。`check:progress` の1行目にも出る。引用符で囲む）。このメモを、そのコミットで確かめたという印。**直しで、主張も根拠も変えなかったときも上げる**（上げないと「メモ 要更新」のまま残る）
+- 「メモ 要更新」の直しでは、変わった主張だけを直し、ほかの節には触らない。章立てで「読むコード」が変わっていれば、frontmatter の `files` も合わせる
 
 - **節（`##`）は論点ごと。** 「このファイルは何を受け持つか」「なぜこの順か」「どこで失敗するか」のように、読者が持つ問いの単位で切る
 - 主張は**何をしているか**と**なぜか**。なぜは、文書（`doc`）→ コードのコメント（`code`）→ 履歴（`commit`）の順に探し、どれにも無ければ `推測` と書いて何から推したかを添える。分からないなら書かない
@@ -67,6 +71,8 @@ npm --prefix site run check:notes -- NN
 
 ## 5. 別の目でレビューする
 
+**直しで、変えたのが frontmatter の `commit` だけ（主張も根拠も変えなかった）なら、この工程は飛ばす。** 確かめ直した主張と、変えなかった理由を報告に書く。
+
 Agent ツールで `subagent_type: "notes-reviewer"` を呼び、章の id（`02-parse-args`）を渡す。見つからないとき（`.claude/agents/` を足した直後のセッションなど）は、`general-purpose` に「`.claude/agents/notes-reviewer.md` を読み、その手順と出力形式に従え」と書いて渡す。
 
 **指摘は鵜呑みにしない。** 直す前に、根拠として示された行を自分でも `git show` で確かめる。
@@ -79,7 +85,7 @@ Agent ツールで `subagent_type: "notes-reviewer"` を呼び、章の id（`02
 ## 6. コミットする
 
 - 中身は `workspace/` のリポジトリにコミットする（キットのリポジトリには入れない）：`git -C workspace add notes/NN-slug.md`（章立てを直したなら `notes/plan.md` も）、`git -C workspace commit -m "…"`
-- メッセージ：新しいメモは `docs: NN章「題」の事実メモを書く`、直しは `docs: NN章の事実メモを直す`
+- メッセージ：新しいメモは `docs: NN章「題」の事実メモを書く`、直しは `docs: NN章の事実メモを直す`、「メモ 要更新」の直しは `docs: NN章の事実メモを基準コミット <短い ID> に合わせる`
 - 本文に、節の一覧と、主張・根拠の数（`check:notes` の行）、推測の件数を箇条書きで
 - プッシュはしない
 

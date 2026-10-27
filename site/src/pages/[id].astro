@@ -2,15 +2,15 @@
 /**
  * 章のページ。中身は workspace/chapters/NN-slug.mdx、番号と題は workspace/notes/plan.md の表から。
  */
-import { getCollection, render, type CollectionEntry } from "astro:content";
+import { render, type CollectionEntry } from "astro:content";
 import Base from "../layouts/Base.astro";
 import GroupStrip from "../components/GroupStrip.astro";
 import Sidebar from "../components/Sidebar.astro";
-import { chapterById, neighbors } from "../lib/curriculum";
+import { builtChapters, chapterById, neighbors } from "../lib/curriculum";
 import { config, lines } from "../lib/target";
 
 export async function getStaticPaths() {
-  const entries = await getCollection("chapters");
+  const entries = await builtChapters();
   return entries.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
 }
 
@@ -20,7 +20,7 @@ interface Props {
 const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
 const ch = chapterById(entry.id);
-const built = new Set((await getCollection("chapters")).map((e) => e.id));
+const built = new Set((await builtChapters()).map((e) => e.id));
 const { prev, next } = neighbors(entry.id);
 const toc = headings.filter((h) => h.depth === 2);
 
